@@ -3,5 +3,8 @@ __pycache__/
 .venv/
 dist/
 *.pyc
+*.pyc
 .env
 uploads/
+*.db
+.pytest_cache/
