@@ -1,7 +1,8 @@
 import os
 import json
 import base64
-from openai import OpenAI
+import re
+import google.generativeai as genai
 from schemas import TerrainAnalysis, TerrainComponent
 
 
@@ -39,39 +40,37 @@ Se a imagem NÃO for um terreno (ex: foto de pessoa, objeto, etc.), retorne:
 IMPORTANTE: Retorne SOMENTE o JSON, sem blocos de código ou texto adicional."""
 
 
+def _extract_json(text: str) -> dict:
+    """Extract JSON from response text, stripping markdown fences if present."""
+    cleaned = text.strip()
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.DOTALL)
+    if match:
+        cleaned = match.group(1)
+    return json.loads(cleaned)
+
+
 def analyze_image(image_base64: str) -> TerrainAnalysis:
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("OPENAI_API_KEY não configurada")
+        raise ValueError("GEMINI_API_KEY não configurada")
 
-    client = OpenAI(api_key=api_key)
+    genai.configure(api_key=api_key)
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": ANALYSIS_PROMPT,
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}",
-                            "detail": "high",
-                        },
-                    },
-                ],
-            }
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    image_data = base64.b64decode(image_base64)
+
+    response = model.generate_content(
+        [
+            ANALYSIS_PROMPT,
+            {"mime_type": "image/jpeg", "data": image_data},
         ],
-        max_tokens=2000,
-        response_format={"type": "json_object"},
+        generation_config=genai.types.GenerationConfig(
+            max_output_tokens=2000,
+        ),
     )
 
-    content = response.choices[0].message.content
-    data = json.loads(content)
+    data = _extract_json(response.text)
 
     components = [TerrainComponent(**c) for c in data.get("components", [])]
 
