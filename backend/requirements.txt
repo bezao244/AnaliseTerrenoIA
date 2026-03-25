@@ -1,7 +1,7 @@
 fastapi==0.115.0
 uvicorn==0.30.0
 python-multipart==0.0.22
-openai==1.45.0
+google-generativeai==0.8.5
 Pillow==12.1.1
 numpy==1.26.4
 SQLAlchemy==2.0.35

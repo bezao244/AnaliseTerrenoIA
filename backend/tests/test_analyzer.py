@@ -9,9 +9,9 @@ from schemas import TerrainAnalysis, TerrainComponent
 
 def test_analyze_no_api_key():
     with patch.dict(os.environ, {}, clear=True):
-        os.environ.pop("OPENAI_API_KEY", None)
+        os.environ.pop("GEMINI_API_KEY", None)
         from analyzer import analyze_image
-        with pytest.raises(ValueError, match="OPENAI_API_KEY não configurada"):
+        with pytest.raises(ValueError, match="GEMINI_API_KEY não configurada"):
             analyze_image("some_base64_image")
 
 
@@ -29,33 +29,24 @@ def test_analyze_with_mock():
         "overall_fertility_score": 8.0,
     }
 
-    mock_message = MagicMock()
-    mock_message.content = json.dumps(mock_response_data)
+    mock_response = MagicMock()
+    mock_response.text = json.dumps(mock_response_data)
 
-    mock_choice = MagicMock()
-    mock_choice.message = mock_message
+    mock_model = MagicMock()
+    mock_model.generate_content.return_value = mock_response
 
-    mock_completion = MagicMock()
-    mock_completion.choices = [mock_choice]
-
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = mock_completion
-
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"}), \
-         patch("analyzer.OpenAI", return_value=mock_client):
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}), \
+         patch("analyzer.genai") as mock_genai:
+        mock_genai.GenerativeModel.return_value = mock_model
         from analyzer import analyze_image
-        result = analyze_image("base64encodedimage")
+        result = analyze_image("dGVzdA==")
 
     assert result.is_terrain is True
     assert result.terrain_type == "Pastagem"
     assert len(result.components) == 2
     assert result.overall_fertility_score == 8.0
 
-    call_args = mock_client.chat.completions.create.call_args
-    assert call_args is not None
-    kwargs = call_args.kwargs if call_args.kwargs else call_args[1]
-    messages = kwargs.get("messages") or call_args[0][0] if call_args[0] else []
-    assert mock_client.chat.completions.create.called
+    assert mock_model.generate_content.called
 
 
 def test_parse_response():
@@ -69,23 +60,34 @@ def test_parse_response():
         "overall_fertility_score": 0.0,
     }
 
-    mock_message = MagicMock()
-    mock_message.content = json.dumps(mock_response_data)
+    mock_response = MagicMock()
+    mock_response.text = json.dumps(mock_response_data)
 
-    mock_choice = MagicMock()
-    mock_choice.message = mock_message
+    mock_model = MagicMock()
+    mock_model.generate_content.return_value = mock_response
 
-    mock_completion = MagicMock()
-    mock_completion.choices = [mock_choice]
-
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = mock_completion
-
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"}), \
-         patch("analyzer.OpenAI", return_value=mock_client):
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}), \
+         patch("analyzer.genai") as mock_genai:
+        mock_genai.GenerativeModel.return_value = mock_model
         from analyzer import analyze_image
-        result = analyze_image("base64image")
+        result = analyze_image("dGVzdA==")
 
     assert result.is_terrain is False
     assert result.overall_fertility_score == 0.0
     assert result.components == []
+
+
+def test_extract_json_with_markdown_fences():
+    from analyzer import _extract_json
+
+    json_str = '```json\n{"is_terrain": true}\n```'
+    result = _extract_json(json_str)
+    assert result == {"is_terrain": True}
+
+
+def test_extract_json_plain():
+    from analyzer import _extract_json
+
+    json_str = '{"is_terrain": false}'
+    result = _extract_json(json_str)
+    assert result == {"is_terrain": False}
